@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Twig → TPL конвертер для OpenCart 2.3</title>
+<style>
+  :root {
+    --bg: #f7f8f9;
+    --ink: #14202b;
+    --muted: #5b6b7a;
+    --hair: #d6dde3;
+    --accent: #17629e;
+    --accent-soft: #eaf2f8;
+    --ok: #1d6f42;
+    --warn: #8a5a13;
+    --warn-bg: #faf3e6;
+    --mono: Consolas, "Cascadia Mono", "Courier New", monospace;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    padding: 36px 20px 80px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  .top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid var(--hair); padding-bottom: 14px;
+  }
+  .top .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn-dl {
+    font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 3px;
+    background: #fff; color: var(--accent); border: 1px solid var(--accent);
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn-dl:hover { background: var(--accent-soft); }
+  .btn-dl[disabled] { opacity: .55; cursor: wait; }
+  .brand { font-weight: 600; letter-spacing: -0.01em; }
+  .brand .v { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-left: 10px; }
+  .top .offline { font-family: var(--mono); font-size: 11.5px; color: var(--ok); }
+  h1 { font-size: 27px; font-weight: 600; letter-spacing: -0.02em; margin: 26px 0 8px; }
+  .lede { color: #2a3946; max-width: 76ch; margin-bottom: 24px; }
+  .lede b { font-weight: 600; }
+  .toolbar { display: flex; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; align-items: center; }
+  .toolbar .spacer { flex: 1; }
+  button {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    padding: 9px 16px;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .opt { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .opt input { accent-color: var(--accent); }
+  /* --- справка (tooltip) у чекбокса isset-гвардов --- */
+  .hint {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 17px; border-radius: 50%; flex: none;
+    border: 1px solid var(--hair); background: #fff; color: var(--muted);
+    font-size: 11px; line-height: 1; cursor: help; user-select: none;
+  }
+  .hint:hover, .hint:focus { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); outline: none; }
+  .hint .tip {
+    position: absolute; top: calc(100% + 8px); right: -10px; z-index: 30;
+    width: 360px; max-width: 78vw; white-space: normal; text-align: left;
+    background: #14202b; color: #f2f6f9; font-size: 12px; font-weight: normal; line-height: 1.55;
+    padding: 10px 12px; border-radius: 6px; box-shadow: 0 6px 24px rgba(20,32,43,.22);
+    opacity: 0; visibility: hidden; transform: translateY(-4px);
+    transition: opacity .12s ease, transform .12s ease, visibility .12s;
+    cursor: default; pointer-events: none;
+  }
+  .hint:hover .tip, .hint:focus .tip { opacity: 1; visibility: visible; transform: translateY(0); }
+  .hint .tip::before {
+    content: ''; position: absolute; top: -5px; right: 14px; width: 10px; height: 10px;
+    background: #14202b; transform: rotate(45deg); border-radius: 2px;
+  }
+  .hint .tip code { font-family: var(--mono); font-size: 11px; background: rgba(255,255,255,.13); padding: 0 4px; border-radius: 2px; }
+
+  /* --- пакетная конвертация папки --- */
+  .batch { border: 1px solid var(--hair); border-radius: 6px; background: #fff; padding: 18px; margin-top: 28px; }
+  .batch h2 { font-size: 17px; margin-bottom: 6px; }
+  .batch .b-desc { font-size: 13px; color: var(--muted); margin-bottom: 12px; max-width: 96ch; }
+  .batch code { font-family: var(--mono); font-size: 11.5px; background: #eef1f3; padding: 1px 4px; border-radius: 2px; }
+  .dropzone {
+    border: 2px dashed var(--hair); border-radius: 6px; background: var(--bg);
+    padding: 26px 18px; text-align: center; color: var(--muted); font-size: 13.5px;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .dropzone b { color: var(--ink); }
+  .b-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  .b-status { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .b-bar { flex: 1; height: 6px; border-radius: 3px; background: #e8ecef; overflow: hidden; min-width: 140px; }
+  .b-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s ease; }
+  .b-link { display: inline-block; background: var(--ok); color: #fff; font-weight: 600; font-size: 13.5px; text-decoration: none; border-radius: 3px; padding: 9px 16px; }
+  .b-log { margin-top: 12px; max-height: 280px; overflow: auto; border: 1px solid var(--hair); border-radius: 4px; display: none; }
+  .b-log table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .b-log th, .b-log td { text-align: left; padding: 5px 9px; border-bottom: 1px solid #eef1f3; vertical-align: top; }
+  .b-log th { background: #f2f5f7; font-weight: 600; position: sticky; top: 0; }
+  .b-log td.mono { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+  .b-log td.st-ok { color: var(--ok); font-weight: 600; white-space: nowrap; }
+  .b-log td.st-keep { color: var(--muted); white-space: nowrap; }
+  .b-log td.st-err { color: #b3261e; font-weight: 600; white-space: nowrap; }
+  .b-warn { color: var(--warn); font-size: 11.5px; margin-top: 2px; }
+  .b-result { margin-top: 12px; display: none; align-items: center; gap: 12px; font-size: 13.5px; flex-wrap: wrap; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .pane { display: flex; flex-direction: column; }
+  .pane .label {
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); margin-bottom: 6px;
+    display: flex; justify-content: space-between;
+  }
+  .pane .label .cnt { text-transform: none; letter-spacing: 0; font-family: var(--mono); }
+  textarea {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    min-height: 380px;
+    padding: 12px;
+    resize: vertical;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+  textarea#out[readonly] { background: #fbfcfd; }
+  .notice {
+    margin-top: 14px;
+    border-top: 1px solid var(--hair);
+    border-bottom: 1px solid var(--hair);
+    padding: 12px 2px;
+    font-size: 13.5px;
+    color: #2a3946;
+    display: none;
+  }
+  .notice.warn { display: block; }
+  .notice .n-title { font-weight: 600; color: var(--warn); margin-bottom: 4px; }
+  .notice ul { margin: 4px 0 0 18px; }
+  .notice li { margin-bottom: 3px; font-family: var(--mono); font-size: 12.5px; }
+  .panel { margin-top: 40px; border-top: 1px solid var(--hair); padding-top: 20px; }
+  .panel h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
+  .panel h2 button { font-size: 12px; padding: 5px 12px; font-weight: 500; }
+  .tests { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tests th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); border-bottom: 1px solid var(--ink); padding: 6px 10px 6px 0;
+  }
+  .tests td { border-bottom: 1px solid var(--hair); padding: 7px 10px 7px 0; vertical-align: top; }
+  .tests td.mono { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .tests .pass { color: var(--ok); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .tests .fail { color: #b03030; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .panel .summary { margin-top: 10px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+  .samples { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    background: var(--accent-soft); border: 1px solid var(--hair);
+    border-radius: 3px; padding: 5px 10px; cursor: pointer;
+  }
+  .foot {
+    margin-top: 48px; border-top: 1px solid var(--hair); padding-top: 12px;
+    font-size: 12.5px; color: var(--muted); max-width: 90ch;
+  }
+  .foot code { font-family: var(--mono); font-size: 11.5px; background: #eef1f3; padding: 1px 4px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">twig2tpl <span class="v" id="ver">локальный конвертер · OC 3 → OC 2.3</span></div>
+    <div class="actions">
+      <div class="offline">работает полностью в браузере, без сети</div>
+      <button class="btn-dl" id="btn-src" title="Собрать ZIP со страницей и JS-ядром и скачать">↓ Скачать исходники</button>
+    </div>
+  </div>
+
+  <h1>Twig → TPL конвертер</h1>
+  <p class="lede">
+    Конвертер twig-шаблонов OpenCart 3 в PHP-шаблоны (<code>.tpl</code>) для OpenCart 2.3.
+    <b id="ver-badge">v0.13</b> · Ядро перенесено из реального порта модуля и закрыто тестами на конструкциях,
+    которые ломают онлайн-аналоги: <b>|e('js')</b>, <b>|format(loop.index)</b>, <b>set с массивами</b>,
+    <b>attribute(_context, … ~ …)</b>, тернарники и сравнения без потери <b>$</b> у операндов.
+    Неподдержанные конструкции не молча ломают вывод — они проходят насквозь и попадают в список предупреждений.
+  </p>
+
+  <div class="toolbar">
+    <button class="primary" id="btn-convert">Конвертировать →</button>
+    <button id="btn-clear">Очистить</button>
+    <div class="spacer"></div>
+    <label class="opt"><input type="checkbox" id="opt-token" checked> user_token → token</label>
+    <label class="opt"><input type="checkbox" id="opt-guard" checked> isset-гварды для переменных-переменных</label>
+    <span class="hint" tabindex="0" aria-label="Справка: что такое isset-гварды">?
+      <span class="tip" role="tooltip">Twig читает <code>attribute(_context, 'tab_' ~ key)</code> как переменную, имя которой собирается на лету, и молча выводит пустоту, если её нет. Прямой PHP-аналог <code>${'tab_' . $key}</code> без проверки бросает Warning «Undefined variable» в лог. Гвард оборачивает вывод в <code>isset(...) ? ... : ''</code> — поведение один в один как в twig, лог чистый. Снимите галочку, если нужен сырой вывод без обёртки.</span>
+    </span>
+  </div>
+
+  <div class="samples">
+    <span style="font-size:12px;color:var(--muted);align-self:center;">Примеры:</span>
+    <button class="chip" data-sample="basic">{{ product.name }}{% if products %}{% for product in products %}{{ product.price }}{% endfor %}{% endif %}</button>
+    <button class="chip" data-sample="filters">{{ text_js|e('js') }}{% for p in items %}{{ '%02d'|format(loop.index) }}{% endfor %}</button>
+    <button class="chip" data-sample="context">{% set tab_keys = ['categories', 'products'] %}{{ attribute(_context, 'tab_' ~ key) }}</button>
+    <button class="chip" data-sample="token">index.php?route=x&amp;user_token={{ user_token }}</button>
+  </div>
+
+  <div class="grid" style="margin-top:14px;">
+    <div class="pane">
+      <div class="label"><span>TWIG</span><span class="cnt" id="in-cnt"></span></div>
+      <textarea id="in" spellcheck="false" placeholder="{% for product in products %}…{% endfor %}"></textarea>
+    </div>
+    <div class="pane">
+      <div class="label"><span>TPL (PHP)</span><span class="cnt" id="out-cnt"></span></div>
+      <textarea id="out" readonly spellcheck="false" placeholder="Результат…"></textarea>
+    </div>
+  </div>
+
+  <div class="batch" id="batch">
+    <h2>Пакетная конвертация папки</h2>
+    <p class="b-desc">Бросьте папку модуля в поле ниже или выберите её кнопкой — конвертер рекурсивно найдёт все <code>.twig</code>, сконвертирует в <code>.tpl</code> с учётом опций выше и упакует результат в zip: вложенность сохраняется, файлы без <code>.twig</code> (php, xml, языковые и т.д.) ложатся в архив байт в байт без изменений. Всё считается локально в браузере — файлы никуда не отправляются.</p>
+    <div class="dropzone" id="dropzone">
+      <b>Перетащите папку сюда</b><br>или выберите её кнопкой ниже. Можно бросить и на поле TWIG выше.
+    </div>
+    <div class="b-row">
+      <button class="primary" id="btn-folder">Выбрать папку</button>
+      <button id="btn-batch-convert" disabled>Конвертировать и скачать ZIP</button>
+      <button id="btn-batch-clear" disabled>Сбросить</button>
+      <span class="b-status" id="b-status"></span>
+      <div class="b-bar"><i id="b-bar"></i></div>
+    </div>
+    <div class="b-result" id="b-result">
+      <a id="b-download" class="b-link" download>Скачать архив</a>
+      <span id="b-size" class="b-status"></span>
+    </div>
+    <div class="b-log" id="b-log">
+      <table>
+        <thead><tr><th style="width:52%">Файл</th><th style="width:16%">Статус</th><th>Примечание</th></tr></thead>
+        <tbody id="b-log-body"></tbody>
+      </table>
+    </div>
+    <input type="file" id="inp-folder" webkitdirectory multiple hidden>
+  </div>
+
+  <div class="notice" id="notice">
+    <div class="n-title">Предупреждения конвертера</div>
+    <ul id="notice-list"></ul>
+  </div>
+
+  <div class="panel">
+    <h2>Самопроверка ядра <button id="btn-tests">Прогнать тесты</button></h2>
+    <table class="tests">
+      <thead><tr><th style="width:34%">Кейс</th><th>Статус</th></tr></thead>
+      <tbody id="tests-body"><tr><td colspan="2" style="color:var(--muted)">Нажмите «Прогнать тесты».</td></tr></tbody>
+    </table>
+    <div class="summary" id="tests-summary"></div>
+  </div>
+
+  <div class="foot">
+    <p><b>После конвертации</b> остаются ручные шаги порта: языковые константы
+    (<code>$data += $this-&gt;load-&gt;language()</code> — трюк opencart.club), передача
+    <code>$header / $column_left / $footer</code>, маршруты <code>marketplace/extension</code> →
+    <code>extension/extension</code> и модель событий <code>setting/event</code> →
+    <code>extension/event</code>. Обязательный контроль: <code>php -l</code> по каждому .tpl
+    и кросс-чек переменных шаблона против контроллера.</p>
+    <p style="margin-top:8px;">Ядро: <code>assets/twig2tpl.js</code> (UMD — работает и в браузере, и в node для пакетной обработки).</p>
+  </div>
+
+</div>
+
+<script src="assets/twig2tpl.js"></script>
+<script src="assets/batch.js"></script>
+<script>
+(function () {
+  var $in = document.getElementById('in');
+  var $out = document.getElementById('out');
+  var $notice = document.getElementById('notice');
+  var $noticeList = document.getElementById('notice-list');
+  var $inCnt = document.getElementById('in-cnt');
+  var $outCnt = document.getElementById('out-cnt');
+
+  // Версия конвертера: из ядра, с подстановкой в шапку и бейдж.
+  if (window.Twig2TPL && Twig2TPL.version) {
+    document.getElementById('ver').textContent = 'v' + Twig2TPL.version + ' · локальный конвертер · OC 3 → OC 2.3';
+    document.getElementById('ver-badge').textContent = 'v' + Twig2TPL.version;
+  }
+
+  function convert() {
+    var src = $in.value;
+    if (!src.trim()) { $out.value = ''; show([]); updateCounts(); return; }
+    var r;
+    try {
+      r = Twig2TPL.convert(src, {
+        tokenRename: document.getElementById('opt-token').checked,
+        issetGuard: document.getElementById('opt-guard').checked
+      });
+    } catch (e) {
+      $out.value = '// ОШИБКА КОНВЕРТЕРА: ' + e.message;
+      show(['конвертер упал с исключением: ' + e.message + ' — вход не изменён']);
+      updateCounts();
+      return;
+    }
+    $out.value = r.output;
+    var w = r.warnings.slice();
+    if (/\{\{|\{%/.test(r.output)) {
+      w.unshift('в результате остались twig-конструкции — найдите их поиском по {­{ или {­% и исправьте вручную');
+    }
+    show(w);
+    updateCounts();
+  }
+
+  function show(warnings) {
+    if (!warnings.length) { $notice.className = 'notice'; $noticeList.innerHTML = ''; return; }
+    $notice.className = 'notice warn';
+    $noticeList.innerHTML = '';
+    warnings.forEach(function (w) {
+      var li = document.createElement('li');
+      li.textContent = w;
+      $noticeList.appendChild(li);
+    });
+  }
+
+  function updateCounts() {
+    $inCnt.textContent = $in.value.length ? ($in.value.length + ' симв.') : '';
+    $outCnt.textContent = $out.value.length ? ($out.value.length + ' симв.') : '';
+  }
+
+  document.getElementById('btn-convert').addEventListener('click', convert);
+  $in.addEventListener('input', updateCounts);
+  document.getElementById('btn-clear').addEventListener('click', function () {
+    $in.value = ''; $out.value = ''; show([]); updateCounts();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (chip) {
+    chip.addEventListener('click', function () {
+      var samples = {
+        basic: '{{ heading_title }}{% if products %}{% for product in products %}{{ product.name }} — {{ product.price }}{% endfor %}{% endif %}',
+        filters: 'var s = {{ text_js|e(\'js\') }};\n{% for p in items %}{{ \'%02d\'|format(loop.index) }}. {{ p.name }}{% endfor %}',
+        context: '{% set tab_keys = [\'categories\', \'products\', \'brands\'] %}\n{% for key in tab_keys %}\n  {% if attribute(_context, \'module_shop_\' ~ key ~ \'_status\') %}{{ attribute(_context, \'tab_\' ~ key) }}{% endif %}\n{% endfor %}',
+        token: 'index.php?route=extension/feed/shop_generator/previewAjax&user_token={{ user_token }}&store_id={{ selected_store_id }}'
+      };
+      $in.value = samples[chip.getAttribute('data-sample')];
+      updateCounts();
+      convert();
+    });
+  });
+
+  document.getElementById('btn-tests').addEventListener('click', function () {
+    var results = Twig2TPL.runTests();
+    var body = document.getElementById('tests-body');
+    body.innerHTML = '';
+    var pass = 0;
+    results.forEach(function (r) {
+      if (r.pass) pass++;
+      var tr = document.createElement('tr');
+      var td1 = document.createElement('td');
+      td1.textContent = r.name;
+      td1.className = 'mono';
+      var td2 = document.createElement('td');
+      td2.className = r.pass ? 'pass' : 'fail';
+      td2.textContent = r.pass ? 'OK' : 'FAIL';
+      tr.appendChild(td1); tr.appendChild(td2);
+      body.appendChild(tr);
+    });
+    document.getElementById('tests-summary').textContent =
+      pass + ' / ' + results.length + ' тестов пройдено';
+  });
+
+  /* --- кнопка «Скачать исходники»: ZIP со страницей, ядром и README --- */
+  document.getElementById('btn-src').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    Promise.all([
+      fetch('index.html').then(function (r) { return r.text(); }),
+      fetch('assets/twig2tpl.js').then(function (r) { return r.text(); }),
+      fetch('assets/batch.js').then(function (r) { return r.text(); })
+    ]).then(function (srcs) {
+      var enc = new TextEncoder();
+      var ver = (window.Twig2TPL && Twig2TPL.version) || '';
+      var readme = [
+        'Twig2TPL v' + ver + ' — конвертер twig → .tpl для OpenCart 2.3',
+        '=============================================================',
+        '',
+        'Запуск: распакуйте архив и откройте index.html двойным кликом.',
+        'Интернет не нужен — конвертация идёт полностью локально.',
+        '',
+        'Возможности:',
+        '  - ручная конвертация: вставьте twig слева, «Конвертировать →»;',
+        '  - пакетная конвертация: перетащите папку модуля в зону (или',
+        '    «Выбрать папку») — все .twig станут .tpl с сохранением',
+        '    вложенности, остальные файлы лягут в ZIP без изменений;',
+        '  - «Прогнать тесты» — самопроверка ядра на реальных кейсах.',
+        '',
+        'Примечание: кнопка «Скачать исходники» работает только при',
+        'открытии по сети (с сайта); локально она не нужна — исходники',
+        'уже у вас в руках.',
+        ''
+      ].join('\r\n');
+      var u8 = Twig2TPLBatch.zipStore([
+        { path: 'twig2tpl/index.html', data: enc.encode(srcs[0]) },
+        { path: 'twig2tpl/assets/twig2tpl.js', data: enc.encode(srcs[1]) },
+        { path: 'twig2tpl/assets/batch.js', data: enc.encode(srcs[2]) },
+        { path: 'twig2tpl/README.txt', data: enc.encode(readme) }
+      ]);
+      var blob = new Blob([u8], { type: 'application/zip' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'twig2tpl-v' + ver + '.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 30000);
+    }).catch(function () {
+      alert('Не удалось собрать архив.\n\nЕсли страница открыта с диска (file://), браузер блокирует чтение собственных файлов — но они вам и так уже доступны: просто скопируйте папку целиком.');
+    }).then(function () { btn.disabled = false; });
+  });
+})();
+
+/* ===== пакетная конвертация папки (v0.12) ===== */
+(function () {
+  var $zone = document.getElementById('dropzone');
+  var $in = document.getElementById('in');
+  var $inp = document.getElementById('inp-folder');
+  var $btnConvert = document.getElementById('btn-batch-convert');
+  var $btnClear = document.getElementById('btn-batch-clear');
+  var $btnFolder = document.getElementById('btn-folder');
+  var $status = document.getElementById('b-status');
+  var $bar = document.getElementById('b-bar');
+  var $result = document.getElementById('b-result');
+  var $download = document.getElementById('b-download');
+  var $size = document.getElementById('b-size');
+  var $log = document.getElementById('b-log');
+  var $logBody = document.getElementById('b-log-body');
+  if (!$zone || typeof Twig2TPLBatch === 'undefined') return;
+
+  var entries = [];
+  var zipBlob = null;
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' Б';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' КБ';
+    return (n / 1048576).toFixed(2) + ' МБ';
+  }
+
+  function setStatus(s) { $status.textContent = s || ''; }
+  function setBar(frac) { $bar.style.width = Math.round((frac || 0) * 100) + '%'; }
+
+  function reset() {
+    entries = []; zipBlob = null;
+    $btnConvert.disabled = true; $btnClear.disabled = true;
+    $result.style.display = 'none'; $log.style.display = 'none';
+    $logBody.innerHTML = ''; setStatus(''); setBar(0);
+    if ($download.href) URL.revokeObjectURL($download.href);
+    $download.removeAttribute('href');
+  }
+
+  function setEntries(list, label) {
+    reset();
+    entries = list;
+    $btnConvert.disabled = !entries.length;
+    $btnClear.disabled = false;
+    setStatus(entries.length ? (label + ': ' + entries.length + ' файлов (в т.ч. не-twig)') : 'файлов не найдено');
+  }
+
+  function countTwig(list) {
+    var n = 0;
+    list.forEach(function (e) { if (/\.twig$/i.test(e.path)) n++; });
+    return n;
+  }
+
+  /* --- выбор папки кнопкой --- */
+  $btnFolder.addEventListener('click', function () { $inp.click(); });
+  $inp.addEventListener('change', function () {
+    var list = Twig2TPLBatch.collectFiles($inp.files);
+    setEntries(list, 'Выбрана папка');
+    setStatus($status.textContent + ' · .twig: ' + countTwig(list));
+  });
+
+  /* --- drag&drop: и в зону, и в поле TWIG --- */
+  [$zone, $in].forEach(function (target) {
+    target.addEventListener('dragover', function (e) {
+      if (Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') === -1) return; // текст не трогаем
+      e.preventDefault();
+      $zone.classList.add('drag');
+    });
+    target.addEventListener('dragleave', function () { $zone.classList.remove('drag'); });
+    target.addEventListener('drop', function (e) {
+      if (Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') === -1) return; // текст — нативно
+      e.preventDefault();
+      $zone.classList.remove('drag');
+      setStatus('читаю содержимое папки…');
+      Twig2TPLBatch.collectFromDrop(e.dataTransfer).then(function (list) {
+        setEntries(list, 'Получена папка');
+        setStatus($status.textContent + ' · .twig: ' + countTwig(list));
+      }).catch(function (err) {
+        setStatus('не удалось прочитать папку: ' + err.message);
+      });
+    });
+  });
+
+  $btnClear.addEventListener('click', reset);
+
+  /* --- конвертация и сборка архива --- */
+  $btnConvert.addEventListener('click', function () {
+    if (!entries.length) return;
+    $btnConvert.disabled = true;
+    $result.style.display = 'none';
+    $log.style.display = 'none'; $logBody.innerHTML = '';
+    var opts = {
+      tokenRename: document.getElementById('opt-token').checked,
+      issetGuard: document.getElementById('opt-guard').checked
+    };
+    setStatus('конвертация…');
+    Twig2TPLBatch.convertEntries(entries, opts, function (done, total, path) {
+      setBar(done / total);
+      setStatus('конвертация ' + done + ' / ' + total + ': ' + path);
+    }).then(function (results) {
+      setStatus('упаковка ZIP…');
+      var now = new Date();
+      return Twig2TPLBatch.buildZip(results, now).then(function (u8) {
+        return { results: results, u8: u8 };
+      });
+    }).then(function (pack) {
+      var blob = new Blob([pack.u8], { type: 'application/zip' });
+      zipBlob = blob;
+      if ($download.href) URL.revokeObjectURL($download.href);
+      $download.href = URL.createObjectURL(blob);
+      $download.download = Twig2TPLBatch.zipName(pack.results);
+      var twigCount = 0, warnCount = 0, errCount = 0;
+      pack.results.forEach(function (r) {
+        if (/\.tpl$/i.test(r.zipPath) && r.status === 'ok') twigCount++;
+        if (r.status === 'error') errCount++;
+        if (r.warnings.length) warnCount++;
+        var tr = document.createElement('tr');
+        var td1 = document.createElement('td'); td1.className = 'mono'; td1.textContent = r.zipPath;
+        var td2 = document.createElement('td'); td2.className = 'st-' + (r.status === 'ok' && /\.tpl$/i.test(r.zipPath) ? 'ok' : (r.status === 'error' ? 'err' : 'keep'));
+        td2.textContent = r.status === 'ok' ? (/\.tpl$/i.test(r.zipPath) ? 'конвертирован' : 'как есть') : (r.status === 'error' ? 'ошибка' : 'как есть');
+        var td3 = document.createElement('td'); td3.className = 'mono';
+        if (r.warnings.length) {
+          td3.textContent = r.warnings.join(' · ');
+          td3.className = 'b-warn';
+          td2.textContent = r.status === 'error' ? 'ошибка' : 'с предупреждением';
+          td2.className = 'st-err';
+          tr.style.background = '#fdf6ec';
+        }
+        tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+        $logBody.appendChild(tr);
+      });
+      $size.textContent = fmtBytes(blob.size) + ' · конвертировано .twig → .tpl: ' + twigCount +
+        ' · без изменений: ' + (pack.results.length - twigCount) +
+        (errCount ? ' · ошибок: ' + errCount : '') +
+        (warnCount ? ' · с предупреждениями: ' + warnCount : '');
+      $result.style.display = 'inline-flex';
+      $log.style.display = 'block';
+      setBar(1);
+      setStatus('готово: ' + $download.download);
+      $download.click(); // автозагрузка, ссылка остаётся на странице
+      $btnClear.disabled = false;
+    }).catch(function (err) {
+      setStatus('ошибка: ' + err.message);
+      $btnConvert.disabled = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>
