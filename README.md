@@ -1,6 +1,6 @@
 # twig2tpl — онлайн-конвертер Twig → TPL
 
-Страница: https://pomansurdev.github.io/
+Страница: https://pomansurdev.github.io/twig2tpl/
 
 Конвертер Twig-шаблонов OpenCart 3 в PHP-шаблоны (.tpl) для порта на OpenCart 2.3.
 
